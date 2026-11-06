@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
+<title>承認</title>
+<style>
+body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;margin:0;background:#f4f5f7;color:#2c3038;padding-bottom:40px;-webkit-text-size-adjust:100%}
+.wrap{max-width:680px;margin:0 auto}
+header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header small{display:block;font-weight:normal;opacity:.8;font-size:12px;margin-top:2px}
+.hd2{margin:14px 16px 6px;font-weight:bold;color:#1a4a7a}.hd2 small{float:right;font-weight:normal;color:#8b929c;font-size:12px}
+.cd{background:#fff;margin:10px 12px;padding:14px;border-radius:10px;border:1px solid #e0e2e7}.cd.me{border:2px solid #1a4a7a}
+.tp{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:#5a6270}.tm{background:#e8eef6;color:#1a4a7a;border-radius:4px;padding:1px 8px;font-weight:bold}
+.ex{color:#c0392b;font-weight:bold}.sm{font-weight:bold;font-size:15px;margin:8px 0 4px;word-break:break-word}.ds{font-size:13px;color:#5a6270;word-break:break-all}
+.hd{white-space:pre-wrap;word-break:break-word;font-size:13px;background:#f6f7f9;border-radius:6px;padding:8px;margin-top:8px;line-height:1.6}
+.lb{font-size:12px;color:#1a4a7a;font-weight:bold;margin-top:10px}
+.bd{white-space:pre-wrap;word-break:break-all;font-size:14px;line-height:1.7;border:1px solid #e0e2e7;border-radius:6px;padding:10px;margin-top:4px}
+.bt{display:flex;gap:10px;margin-top:14px}.bt button{flex:1;font-size:18px;font-weight:bold;padding:16px 8px;border:0;border-radius:10px;color:#fff;font-family:inherit}
+.bt .ok{background:#06c755}.bt .ng{background:#8b929c}.bt button:disabled{opacity:.45}
+.ms{font-size:13px;color:#c0392b;margin-top:6px;text-align:center}
+.rs{margin-top:14px;padding:12px;border-radius:8px;font-weight:bold;font-size:15px;text-align:center}
+.rs.ok{background:#e3f4e8;color:#1d6b36}.rs.ng{background:#e9ecf0;color:#5a6270}.rs.ex{background:#e9ecf0;color:#8b929c}.rs.warn{background:#fde8e6;color:#a6261b}
+.cc{font-size:11px;color:#8b929c;margin-top:8px;text-align:right}
+.em{margin:12px 16px;padding:12px;background:#fff;border-radius:8px;color:#5a6270;font-size:14px;line-height:1.6}
+.old{margin:24px 12px 0;opacity:.6}.ot{font-size:13px;font-weight:bold;color:#5a6270;margin:0 4px 6px}
+.or{background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12.5px;line-height:1.6;color:#5a6270;word-break:break-word}
+.os{display:inline-block;font-size:11px;font-weight:bold;border-radius:4px;padding:0 6px;margin-right:6px;background:#e9ecf0}
+.os.dn{background:#e3f4e8;color:#1d6b36}.os.bad{background:#fde8e6;color:#a6261b}.op{font-size:11.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>承認<small>OK を押すと送信待ちになり、Macが数分で受け取って送ります（送ってよい時間の外なら時間が来てから）。NG は送りません</small></header>
+<div id="list"><div class="em">読み込んでいます…</div></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  // このページにはデータも合言葉も入っていない。通知のリンクの「#」より後ろ（サーバーへは送られない）で
+  // 合言葉 k と読み先 u（Apps Script の /exec）を受け取り、読み込んだらアドレス欄から消す。
+  // 開いている間だけ使えるよう、このタブの sessionStorage に置く（タブを閉じれば消える。localStorage には置かない）。
+  var SS = 'shounin_cfg';
+  var U_OK = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+  var K = '', U = '', C = '';
+  function parseHash(h) {
+    var o = {};
+    String(h || '').replace(/^#/, '').split('&').forEach(function (kv) {
+      var i = kv.indexOf('=');
+      if (i > 0) { try { o[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} }
+    });
+    return o;
+  }
+  var h = parseHash(location.hash);
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  if (h.k && h.u) {
+    K = h.k; U = h.u; C = h.code || '';
+    try { sessionStorage.setItem(SS, JSON.stringify({ k: K, u: U, code: C })); } catch (e) {}
+  } else {
+    try { var s = JSON.parse(sessionStorage.getItem(SS) || 'null'); if (s) { K = s.k; U = s.u; C = s.code || ''; } } catch (e) {}
+  }
+  if (!/^[A-Z]{4}$/.test(C)) C = '';
+
+  var DATA = null, PRESSED = {}, NOW = '', BUSY = {};
+  var list = document.getElementById('list');
+  function e(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function md(s) { var m = String(s || '').match(/^\d{4}-(\d\d)-(\d\d) (\d\d:\d\d)/); return m ? (m[1] + '/' + m[2] + ' ' + m[3]) : (s || ''); }
+  function pk(it) { return it.code + '_' + String(it.hash || '').slice(0, 12); }
+  function msg(t) { list.innerHTML = '<div class="em">' + e(t) + '</div>'; }
+
+  if (!K || K.length < 32 || !U_OK.test(U)) {
+    msg('このページは通知のリンク（「OK／NGを押す」）から開いてください。リンクから開き直すと表示されます');
+    return;
+  }
+
+  function api(q) {
+    var p = ['p=shounin_api', 'k=' + encodeURIComponent(K)];
+    Object.keys(q || {}).forEach(function (x) { p.push(x + '=' + encodeURIComponent(q[x])); });
+    // Cookie を付けない（Googleにログイン中のブラウザでも /u/N/ に転送されないように）
+    return fetch(U + '?' + p.join('&'), { credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', redirect: 'follow' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }
+
+  function st(it) {
+    var p = PRESSED[pk(it)] || {}, ph = it.phone || {};
+    if (it.status === '承認待ち') {
+      if (it.expires && it.expires <= NOW) return ['ex', '期限切れ（送りません）'];
+      if (p.verb === 'OK') return ['ok', '送信待ちにしました（' + md(p.at) + '）。Macが2〜4分で受け取ります'];
+      if (p.verb === 'NG') return ['ng', '送らないことにしました（' + md(p.at) + '）'];
+      if (ph.result && ph.result.indexOf('反映していません') === 0) return ['warn', ph.result];
+      return ['', ''];
+    }
+    if (it.status === '承認済み') return ['ok', 'OK済み・送信待ち' + (it.result ? '（' + it.result + '）' : '')];
+    if (it.status === '送信中') return ['ok', '送信中'];
+    return ['', it.status];
+  }
+  function card(it) {
+    var s = st(it), code = /^[A-Z]{4}$/.test(it.code) ? it.code : '';
+    var h = ['<div class="cd' + (code && code === C ? ' me' : '') + '">'];
+    h.push('<div class="tp"><span class="tm">' + e(it.team) + '</span><span class="ex">期限 ' + e(md(it.expires)) + '</span></div>');
+    h.push('<div class="sm">' + e(it.summary) + '</div>');
+    h.push('<div class="ds">宛先：' + e(it.dest) + '</div>');
+    if (it.head) h.push('<div class="hd">' + e(it.head) + '</div>');
+    h.push('<div class="lb">▼ 送る本文（全文）</div><div class="bd">' + e(it.body || '（本文なし）') + '</div>');
+    if (s[1]) h.push('<div class="rs ' + s[0] + '">' + e(s[1]) + '</div>');
+    else if (code) h.push('<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK">OK（送る）</button>' +
+                          '<button class="ng" data-code="' + code + '" data-verb="NG">NG（送らない）</button></div><div class="ms" id="m_' + code + '"></div>');
+    h.push('<div class="cc">コード ' + e(it.code) + '</div></div>');
+    return h.join('');
+  }
+  function lbl(s) { return s === '送信済み' || s === '反映済み' ? 'dn' : (s === 'NG' || s === '期限切れ' ? 'gr' : 'bad'); }
+  function draw() {
+    if (!DATA) { msg('まだ承認のデータがありません（Macが2分おきに置きます）'); return; }
+    var items = DATA.items || [], act = [], cl = [];
+    items.forEach(function (it) { (['承認待ち', '承認済み', '送信中'].indexOf(it.status) >= 0 ? act : cl).push(it); });
+    act.sort(function (a, b) { return (a.code === C ? -1 : 0) - (b.code === C ? -1 : 0); });
+    var h = [];
+    var wait = act.filter(function (it) { return it.status === '承認待ち' && !st(it)[1]; }).length;
+    h.push('<div class="hd2">' + (wait ? 'まだ押していない承認 ' + wait + '件' : 'まだ押していない承認はありません') + '<small>更新 ' + e(md(DATA.updated)) + '</small></div>');
+    if (C && !items.some(function (it) { return it.code === C; })) h.push('<div class="em">コード ' + e(C) + ' はまだ届いていません。1分ほど待つと出ます（自動で読み直します）</div>');
+    act.forEach(function (it) { h.push(card(it)); });
+    if (cl.length) {
+      h.push('<div class="old"><div class="ot">処理済み</div>');
+      cl.forEach(function (it) {
+        h.push('<div class="or"><span class="os ' + lbl(it.status) + '">' + e(it.status) + '</span>' + e(md(it.updated)) + '　' + e(it.team) + '<br>' + e(it.summary) +
+               (it.phone && it.phone.result ? '<br><span class="op">スマホ：' + e(it.phone.verb) + ' ' + e(it.phone.result) + '</span>' : '') + '</div>');
+      });
+      h.push('</div>');
+    }
+    list.innerHTML = h.join('');
+  }
+  function load() {
+    api({}).then(function (r) {
+      if (!r || !r.ok) { msg('読み込めません：' + ((r && r.error) || '')); return; }
+      DATA = r.data; PRESSED = r.pressed || {}; NOW = r.now || '';
+      if (!Object.keys(BUSY).length) draw();
+    }).catch(function (x) { if (!DATA) msg('読み込めません：' + x.message + '（電波を確かめて、開き直してください）'); });
+  }
+  list.addEventListener('click', function (ev) {
+    var b = ev.target.closest ? ev.target.closest('button[data-code]') : null;
+    if (!b || !DATA) return;
+    var code = b.getAttribute('data-code'), verb = b.getAttribute('data-verb');
+    var it = (DATA.items || []).filter(function (x) { return x.code === code; })[0];
+    if (!it || (verb !== 'OK' && verb !== 'NG')) return;
+    var bs = b.parentNode.querySelectorAll('button'), i;
+    for (i = 0; i < bs.length; i++) bs[i].disabled = true;
+    BUSY[code] = 1;
+    var m = document.getElementById('m_' + code);
+    m.textContent = '送っています…';
+    function back(t) { delete BUSY[code]; m.textContent = t; for (var j = 0; j < bs.length; j++) bs[j].disabled = false; }
+    api({ op: 'decide', code: code, d: verb, h: it.hash }).then(function (r) {
+      if (r && r.ok) { delete BUSY[code]; PRESSED[pk(it)] = { verb: r.verb, at: r.at }; draw(); setTimeout(load, 1500); }
+      else { back((r && r.error) || '失敗しました'); setTimeout(load, 1500); }
+    }).catch(function (x) { back('送れませんでした：' + x.message + '（もう一度押してください）'); });
+  });
+  load();
+  setInterval(load, 10000);
+})();
+</script>
+</body>
+</html>
