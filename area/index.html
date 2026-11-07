@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://cdnjs.cloudflare.com; img-src https://cyberjapandata.gsi.go.jp data:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
+<title>希望エリア</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--navy:#1a4a7a;--red:#d63a2f;--ink:#2c3038;--sub:#5a6270;--line:#e0e2e7;--bg:#f4f5f7}
+html,body{height:100%}
+body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;margin:0;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%;display:flex;flex-direction:column}
+header{background:var(--navy);color:#fff;padding:10px 16px;font-weight:bold;font-size:16px}
+header small{display:block;font-weight:normal;opacity:.85;font-size:12px;margin-top:2px;line-height:1.5}
+#map{flex:1;min-height:280px;background:#e8eaed}
+#map.draw{cursor:crosshair;touch-action:none}
+.bar{background:#fff;border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom))}
+.row{display:flex;gap:8px}
+.row button{flex:1;font-family:inherit;font-size:15px;font-weight:bold;padding:12px 4px;border-radius:10px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+.row button.main{background:var(--red);border-color:var(--red);color:#fff}
+.row button.main.on{background:#fff;color:var(--red)}
+.row button.save{background:var(--navy);border-color:var(--navy);color:#fff}
+.row button:disabled{opacity:.4}
+textarea{box-sizing:border-box;width:100%;margin-top:8px;font-family:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:8px;resize:none;height:44px}
+.ms{font-size:13px;color:var(--sub);margin-top:6px;min-height:1.2em;line-height:1.5}
+.ms.err{color:#a6261b}.ms.ok{color:#1d6b36}
+.hint{position:absolute;z-index:1000;left:50%;top:10px;transform:translateX(-50%);background:rgba(214,58,47,.95);color:#fff;font-size:14px;font-weight:bold;padding:8px 14px;border-radius:20px;pointer-events:none;white-space:nowrap;display:none}
+#wrap{position:relative;flex:1;display:flex;flex-direction:column}
+.em{margin:16px;padding:14px;background:#fff;border-radius:8px;color:var(--sub);font-size:14px;line-height:1.7}
+</style>
+</head>
+<body>
+<header id="hd">希望エリア<small>「なぞって囲む」を押して、住みたいエリアを指でぐるっと囲んでください。何か所でも囲めます。</small></header>
+<div id="wrap"><div id="map"></div><div class="hint" id="hint">指でなぞって囲んでください</div></div>
+<div class="bar">
+  <div class="row">
+    <button class="main" id="bDraw">なぞって囲む</button>
+    <button id="bUndo">1つ戻す</button>
+    <button id="bClear">全部消す</button>
+  </div>
+  <textarea id="note" maxlength="500" placeholder="メモ（例：この範囲なら駅から遠くても可、線路沿いは避けたい など）"></textarea>
+  <div class="row" style="margin-top:8px"><button class="save" id="bSave">保存する</button></div>
+  <div class="ms" id="ms"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  // このページにはデータも合言葉も入っていない。リンクの「#」より後ろ（サーバーへは送られない）で
+  // お客様ごとの合言葉 t と保存先 u（Apps Script の /exec）を受け取り、読み込んだらアドレス欄から消す。
+  var SS = 'area_cfg';
+  var U_OK = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/;
+  var T = '', U = '';
+  function parseHash(h) {
+    var o = {};
+    String(h || '').replace(/^#/, '').split('&').forEach(function (kv) {
+      var i = kv.indexOf('=');
+      if (i > 0) { try { o[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} }
+    });
+    return o;
+  }
+  var h = parseHash(location.hash);
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  if (h.t && h.u) {
+    T = h.t; U = h.u;
+    try { sessionStorage.setItem(SS, JSON.stringify({ t: T, u: U })); } catch (e) {}
+  } else {
+    try { var s = JSON.parse(sessionStorage.getItem(SS) || 'null'); if (s) { T = s.t; U = s.u; } } catch (e) {}
+  }
+  var $ = function (id) { return document.getElementById(id); };
+  function msg(s, cls) { var m = $('ms'); m.textContent = s || ''; m.className = 'ms' + (cls ? ' ' + cls : ''); }
+  if (!/^[A-Za-z0-9]{32}$/.test(T) || !U_OK.test(U) || !window.L) {
+    document.body.innerHTML = '<header>希望エリア</header><div class="em">' + (window.L ? 'リンクが正しくありません。届いたリンクをもう一度開いてください。' : '地図を読み込めませんでした。通信の良いところで開き直してください。') + '</div>';
+    return;
+  }
+  function api(q) {
+    var p = ['p=area_api', 't=' + encodeURIComponent(T)];
+    Object.keys(q || {}).forEach(function (x) { p.push(x + '=' + encodeURIComponent(q[x])); });
+    return fetch(U + '?' + p.join('&'), { credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', redirect: 'follow' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }
+
+  // 地図は国土地理院の淡色地図（線路・駅名が見やすい）
+  var map = L.map('map', { zoomControl: true, attributionControl: true }).setView([35.663, 139.668], 14);
+  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+    maxZoom: 18, minZoom: 10, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>'
+  }).addTo(map);
+  var STYLE = { color: '#d63a2f', weight: 2, fillColor: '#d63a2f', fillOpacity: 0.22 };
+  var polys = [];          // [L.Polygon]
+  var dirty = false;
+  function setDirty(v) { dirty = v; $('bSave').textContent = v ? '保存する' : '保存済み'; $('bSave').disabled = !v; }
+  function addPoly(latlngs) { var pg = L.polygon(latlngs, STYLE).addTo(map); polys.push(pg); }
+  function refreshBtns() { $('bUndo').disabled = !polys.length; $('bClear').disabled = !polys.length; }
+
+  // なぞって囲む：指（マウス）で描いた線を、閉じた範囲にする
+  var drawing = false, pts = [], line = null, active = false;
+  function setDraw(on) {
+    drawing = on;
+    $('bDraw').classList.toggle('on', on);
+    $('bDraw').textContent = on ? 'やめる' : 'なぞって囲む';
+    $('map').classList.toggle('draw', on);
+    $('hint').style.display = on ? 'block' : 'none';
+    if (on) { map.dragging.disable(); map.touchZoom.disable(); map.doubleClickZoom.disable(); map.boxZoom.disable(); }
+    else { map.dragging.enable(); map.touchZoom.enable(); map.doubleClickZoom.enable(); map.boxZoom.enable(); }
+  }
+  function cpt(ev) { var r = $('map').getBoundingClientRect(); return L.point(ev.clientX - r.left, ev.clientY - r.top); }
+  var el = $('map');
+  el.addEventListener('pointerdown', function (ev) {
+    if (!drawing) return;
+    ev.preventDefault(); active = true; pts = [cpt(ev)];
+    try { el.setPointerCapture(ev.pointerId); } catch (e) {}
+    line = L.polyline([map.containerPointToLatLng(pts[0])], { color: '#d63a2f', weight: 3, dashArray: '6 6' }).addTo(map);
+  });
+  el.addEventListener('pointermove', function (ev) {
+    if (!drawing || !active) return;
+    ev.preventDefault();
+    var p = cpt(ev), q = pts[pts.length - 1];
+    if (Math.abs(p.x - q.x) + Math.abs(p.y - q.y) < 4) return;
+    pts.push(p); line.addLatLng(map.containerPointToLatLng(p));
+  });
+  function finish() {
+    if (!active) return;
+    active = false;
+    if (line) { map.removeLayer(line); line = null; }
+    var simp = L.LineUtil.simplify(pts, 3);
+    if (simp.length >= 3) {
+      var ll = simp.map(function (p) { return map.containerPointToLatLng(p); });
+      var b = L.latLngBounds(ll), w = map.distance(b.getNorthWest(), b.getNorthEast()), hgt = map.distance(b.getNorthWest(), b.getSouthWest());
+      if (w > 60 && hgt > 60) { addPoly(ll); setDirty(true); refreshBtns(); setDraw(false); msg('囲みました。ほかにもあれば、もう一度「なぞって囲む」を押してください'); return; }
+    }
+    msg('囲みが小さすぎました。もう少し大きくなぞってください', 'err');
+  }
+  el.addEventListener('pointerup', finish);
+  el.addEventListener('pointercancel', finish);
+
+  $('bDraw').onclick = function () { setDraw(!drawing); if (drawing) msg(''); };
+  $('bUndo').onclick = function () { var pg = polys.pop(); if (pg) { map.removeLayer(pg); setDirty(true); } refreshBtns(); };
+  $('bClear').onclick = function () {
+    if (!polys.length || !confirm('囲んだ範囲を全部消しますか？')) return;
+    polys.forEach(function (pg) { map.removeLayer(pg); }); polys = []; setDirty(true); refreshBtns();
+  };
+  $('note').addEventListener('input', function () { setDirty(true); });
+
+  function enc() {
+    return polys.map(function (pg) {
+      return pg.getLatLngs()[0].map(function (p) { return p.lat.toFixed(5) + ',' + p.lng.toFixed(5); }).join(';');
+    }).join('|');
+  }
+  $('bSave').onclick = function () {
+    var g = enc();
+    if (g.length > 6000) { msg('範囲が細かすぎます。少し大まかに囲み直してください', 'err'); return; }
+    $('bSave').disabled = true; msg('保存しています…');
+    api({ op: 'save', g: g, note: $('note').value.trim() }).then(function (r) {
+      if (!r || !r.ok) throw new Error(r && r.error || '保存できませんでした');
+      setDirty(false); msg('保存しました（' + String(r.updated || '').slice(5, 16).replace('-', '/') + '）。担当者に届きます', 'ok');
+    }).catch(function (e) { $('bSave').disabled = false; msg('保存できませんでした：' + e.message + '。もう一度押してください', 'err'); });
+  };
+  window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  msg('読み込んでいます…');
+  api({}).then(function (r) {
+    if (!r || !r.ok) throw new Error(r && r.error || '読み込めません');
+    if (r.label) { document.title = '希望エリア｜' + r.label; $('hd').firstChild.nodeValue = r.label + '　希望エリア'; }
+    (r.polys || []).forEach(function (pp) { addPoly(pp.map(function (x) { return [x[0], x[1]]; })); });
+    $('note').value = r.note || '';
+    if (polys.length) map.fitBounds(L.featureGroup(polys).getBounds(), { padding: [24, 24] });
+    else if (r.center) map.setView(r.center, 14);
+    setDirty(false); refreshBtns();
+    msg(r.updated ? '前回の保存：' + String(r.updated).slice(5, 16).replace('-', '/') : '');
+  }).catch(function (e) { msg('読み込めませんでした：' + e.message, 'err'); setDirty(false); refreshBtns(); });
+})();
+</script>
+</body>
+</html>
