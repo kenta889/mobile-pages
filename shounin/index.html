@@ -63,7 +63,10 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
   }
   if (!/^[A-Z]{4}$/.test(C)) C = '';
 
-  var DATA = null, PRESSED = {}, NOW = '', BUSY = {};
+  var DATA = null, PRESSED = {}, NOW = '', BUSY = {}, EDITS = {};
+  document.addEventListener('input', function (ev) {
+    var t = ev.target; if (t.getAttribute && t.getAttribute('data-edit')) EDITS[t.getAttribute('data-edit')] = t.value;
+  });
   var list = document.getElementById('list');
   function e(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function md(s) { var m = String(s || '').match(/^\d{4}-(\d\d)-(\d\d) (\d\d:\d\d)/); return m ? (m[1] + '/' + m[2] + ' ' + m[3]) : (s || ''); }
@@ -103,7 +106,13 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     h.push('<div class="sm">' + e(it.summary) + '</div>');
     h.push('<div class="ds">宛先：' + e(it.dest) + '</div>');
     if (it.head) h.push('<div class="hd">' + e(it.head) + '</div>');
-    h.push('<div class="lb">▼ 送る本文（全文）</div><div class="bd">' + e(it.body || '（本文なし）') + '</div>');
+    var review = it.approval || {}, pressed = PRESSED[pk(it)] || {};
+    var shown = pressed.verb === 'OK' && typeof pressed.body === 'string' ? pressed.body : (review.approved_body || it.body || '');
+    h.push('<div class="lb">▼ 送る本文（全文）' + (review.edited || pressed.edited ? '・編集あり' : '') + '</div>');
+    if (it.editable && !s[1]) {
+      var value = Object.prototype.hasOwnProperty.call(EDITS, pk(it)) ? EDITS[pk(it)] : shown;
+      h.push('<textarea class="bd" style="width:100%;box-sizing:border-box;min-height:280px;font:inherit;font-size:16px" maxlength="2000" id="b_' + it.code + '" data-edit="' + pk(it) + '" aria-label="送る本文">' + e(value) + '</textarea>');
+    } else h.push('<div class="bd">' + e(shown || '（本文なし）') + '</div>');
     if (s[1]) h.push('<div class="rs ' + s[0] + '">' + e(s[1]) + '</div>');
     else if (code) h.push('<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK">OK（送る）</button>' +
                           '<button class="ng" data-code="' + code + '" data-verb="NG">NG（送らない）</button></div><div class="ms" id="m_' + code + '"></div>');
@@ -135,7 +144,7 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     api({}).then(function (r) {
       if (!r || !r.ok) { msg('読み込めません：' + ((r && r.error) || '')); return; }
       DATA = r.data; PRESSED = r.pressed || {}; NOW = r.now || '';
-      if (!Object.keys(BUSY).length) draw();
+      if (!Object.keys(BUSY).length && !(document.activeElement && document.activeElement.tagName === 'TEXTAREA')) draw();
     }).catch(function (x) { if (!DATA) msg('読み込めません：' + x.message + '（電波を確かめて、開き直してください）'); });
   }
   list.addEventListener('click', function (ev) {
@@ -150,8 +159,10 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     var m = document.getElementById('m_' + code);
     m.textContent = '送っています…';
     function back(t) { delete BUSY[code]; m.textContent = t; for (var j = 0; j < bs.length; j++) bs[j].disabled = false; }
-    api({ op: 'decide', code: code, d: verb, h: it.hash }).then(function (r) {
-      if (r && r.ok) { delete BUSY[code]; PRESSED[pk(it)] = { verb: r.verb, at: r.at }; draw(); setTimeout(load, 1500); }
+    var q = { op: 'decide', code: code, d: verb, h: it.hash };
+    if (verb === 'OK' && it.editable) q.body = document.getElementById('b_' + code).value;
+    api(q).then(function (r) {
+      if (r && r.ok) { delete BUSY[code]; PRESSED[pk(it)] = { verb: r.verb, at: r.at, body: r.body, edited: r.edited }; draw(); setTimeout(load, 1500); }
       else { back((r && r.error) || '失敗しました'); setTimeout(load, 1500); }
     }).catch(function (x) { back('送れませんでした：' + x.message + '（もう一度押してください）'); });
   });
