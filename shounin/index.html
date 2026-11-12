@@ -19,7 +19,7 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
 .lb{font-size:12px;color:#1a4a7a;font-weight:bold;margin-top:10px}
 .bd{white-space:pre-wrap;word-break:break-all;font-size:14px;line-height:1.7;border:1px solid #e0e2e7;border-radius:6px;padding:10px;margin-top:4px}
 .bt{display:flex;gap:10px;margin-top:14px}.bt button{flex:1;font-size:18px;font-weight:bold;padding:16px 8px;border:0;border-radius:10px;color:#fff;font-family:inherit}
-.bt .ok{background:#06c755}.bt .ng{background:#8b929c}.bt button:disabled{opacity:.45}
+.bt .ok{background:#06c755}.bt .ng{background:#8b929c}.bt .ed{background:#1a4a7a}.bt button:disabled{opacity:.45}
 .ms{font-size:13px;color:#c0392b;margin-top:6px;text-align:center}
 .rs{margin-top:14px;padding:12px;border-radius:8px;font-weight:bold;font-size:15px;text-align:center}
 .rs.ok{background:#e3f4e8;color:#1d6b36}.rs.ng{background:#e9ecf0;color:#5a6270}.rs.ex{background:#e9ecf0;color:#8b929c}.rs.warn{background:#fde8e6;color:#a6261b}
@@ -63,7 +63,7 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
   }
   if (!/^[A-Z]{4}$/.test(C)) C = '';
 
-  var DATA = null, PRESSED = {}, NOW = '', BUSY = {}, EDITS = {};
+  var DATA = null, PRESSED = {}, NOW = '', BUSY = {}, EDITS = {}, OPEN = {};
   document.addEventListener('input', function (ev) {
     var t = ev.target; if (t.getAttribute && t.getAttribute('data-edit')) EDITS[t.getAttribute('data-edit')] = t.value;
   });
@@ -109,11 +109,15 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     var review = it.approval || {}, pressed = PRESSED[pk(it)] || {};
     var shown = pressed.verb === 'OK' && typeof pressed.body === 'string' ? pressed.body : (review.approved_body || it.body || '');
     h.push('<div class="lb">▼ 送る本文（全文）' + (review.edited || pressed.edited ? '・編集あり' : '') + '</div>');
-    if (it.editable && !s[1]) {
+    var editing = it.editable && !s[1] && OPEN[pk(it)];
+    if (editing) {
       var value = Object.prototype.hasOwnProperty.call(EDITS, pk(it)) ? EDITS[pk(it)] : shown;
       h.push('<textarea class="bd" style="width:100%;box-sizing:border-box;min-height:280px;font:inherit;font-size:16px" maxlength="2000" id="b_' + it.code + '" data-edit="' + pk(it) + '" aria-label="送る本文">' + e(value) + '</textarea>');
     } else h.push('<div class="bd">' + e(shown || '（本文なし）') + '</div>');
     if (s[1]) h.push('<div class="rs ' + s[0] + '">' + e(s[1]) + '</div>');
+    else if (code && it.editable) h.push('<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK">' + (editing ? '直した本文で送る' : 'OK（送る）') + '</button>' +
+                          '<button class="ed" data-code="' + code + '" data-verb="ED">' + (editing ? '編集をやめる' : '編集') + '</button>' +
+                          '<button class="ng" data-code="' + code + '" data-verb="NG">NG（送らない）</button></div><div class="ms" id="m_' + code + '"></div>');
     else if (code) h.push('<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK">OK（送る）</button>' +
                           '<button class="ng" data-code="' + code + '" data-verb="NG">NG（送らない）</button></div><div class="ms" id="m_' + code + '"></div>');
     h.push('<div class="cc">コード ' + e(it.code) + '</div></div>');
@@ -152,6 +156,12 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     if (!b || !DATA) return;
     var code = b.getAttribute('data-code'), verb = b.getAttribute('data-verb');
     var it = (DATA.items || []).filter(function (x) { return x.code === code; })[0];
+    if (it && verb === 'ED') {   // 編集：本文欄を開く／閉じる（閉じたら直した分は捨てる）
+      if (OPEN[pk(it)]) { delete OPEN[pk(it)]; delete EDITS[pk(it)]; } else OPEN[pk(it)] = 1;
+      draw();
+      var ta = document.getElementById('b_' + code); if (ta) ta.focus();
+      return;
+    }
     if (!it || (verb !== 'OK' && verb !== 'NG')) return;
     var bs = b.parentNode.querySelectorAll('button'), i;
     for (i = 0; i < bs.length; i++) bs[i].disabled = true;
@@ -160,7 +170,8 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     m.textContent = '送っています…';
     function back(t) { delete BUSY[code]; m.textContent = t; for (var j = 0; j < bs.length; j++) bs[j].disabled = false; }
     var q = { op: 'decide', code: code, d: verb, h: it.hash };
-    if (verb === 'OK' && it.editable) q.body = document.getElementById('b_' + code).value;
+    var ta2 = document.getElementById('b_' + code);
+    if (verb === 'OK' && it.editable && ta2) q.body = ta2.value;   // 編集を開いているときだけ、直した本文を送る
     api(q).then(function (r) {
       if (r && r.ok) { delete BUSY[code]; PRESSED[pk(it)] = { verb: r.verb, at: r.at, body: r.body, edited: r.edited }; draw(); setTimeout(load, 1500); }
       else { back((r && r.error) || '失敗しました'); setTimeout(load, 1500); }
