@@ -71,6 +71,12 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
   function e(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function md(s) { var m = String(s || '').match(/^\d{4}-(\d\d)-(\d\d) (\d\d:\d\d)/); return m ? (m[1] + '/' + m[2] + ' ' + m[3]) : (s || ''); }
   function pk(it) { return it.code + '_' + String(it.hash || '').slice(0, 12); }
+  // 送る直前の点検（send_mail.py の MASKED と同じ）。残ったままOKを押すとMac側で「失敗」になるので、ここで止める
+  function masked(t) {
+    var r = ['【要確認】', '〔メール〕', '〔電話〕', '〔URL〕'].filter(function (w) { return String(t || '').indexOf(w) >= 0; });
+    if (/(相手|顧客)\d+/.test(String(t || ''))) r.push('伏せ字（相手N・顧客N）');
+    return r;
+  }
   function msg(t) { list.innerHTML = '<div class="em">' + e(t) + '</div>'; }
 
   if (!K || K.length < 32 || !U_OK.test(U)) {
@@ -115,7 +121,8 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
       h.push('<textarea class="bd" style="width:100%;box-sizing:border-box;min-height:280px;font:inherit;font-size:16px" maxlength="2000" id="b_' + it.code + '" data-edit="' + pk(it) + '" aria-label="送る本文">' + e(value) + '</textarea>');
     } else h.push('<div class="bd">' + e(shown || '（本文なし）') + '</div>');
     if (s[1]) h.push('<div class="rs ' + s[0] + '">' + e(s[1]) + '</div>');
-    else if (code && it.editable) h.push('<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK">' + (editing ? '直した本文で送る' : 'OK（送る）') + '</button>' +
+    else if (code && it.editable) h.push((!editing && masked(shown).length ? '<div class="rs warn">' + e(masked(shown).join('・')) + ' が残っています。「編集」で直してから送ってください</div>' : '') +
+                          '<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK"' + (!editing && masked(shown).length ? ' disabled' : '') + '>' + (editing ? '直した本文で送る' : 'OK（送る）') + '</button>' +
                           '<button class="ed" data-code="' + code + '" data-verb="ED">' + (editing ? '編集をやめる' : '編集') + '</button>' +
                           '<button class="ng" data-code="' + code + '" data-verb="NG">NG（送らない）</button></div><div class="ms" id="m_' + code + '"></div>');
     else if (code) h.push('<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK">OK（送る）</button>' +
@@ -163,6 +170,11 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
       return;
     }
     if (!it || (verb !== 'OK' && verb !== 'NG')) return;
+    if (verb === 'OK' && it.editable) {
+      var ta0 = document.getElementById('b_' + code), rv = it.approval || {};
+      var bad = masked(ta0 ? ta0.value : (rv.approved_body || it.body || ''));
+      if (bad.length) { var m0 = document.getElementById('m_' + code); if (m0) m0.textContent = bad.join('・') + ' が残っています。直してから押してください（このままだと送られません）'; return; }
+    }
     var bs = b.parentNode.querySelectorAll('button'), i;
     for (i = 0; i < bs.length; i++) bs[i].disabled = true;
     BUSY[code] = 1;
