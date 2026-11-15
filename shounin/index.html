@@ -63,9 +63,10 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
   }
   if (!/^[A-Z]{4}$/.test(C)) C = '';
 
-  var DATA = null, PRESSED = {}, NOW = '', BUSY = {}, EDITS = {}, OPEN = {};
+  var DATA = null, PRESSED = {}, NOW = '', BUSY = {}, EDITS = {}, OPEN = {}, NGOPEN = {}, NGTXT = {};
   document.addEventListener('input', function (ev) {
     var t = ev.target; if (t.getAttribute && t.getAttribute('data-edit')) EDITS[t.getAttribute('data-edit')] = t.value;
+    if (t.getAttribute && t.getAttribute('data-ngr')) NGTXT[t.getAttribute('data-ngr')] = t.value;
   });
   var list = document.getElementById('list');
   function e(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -97,7 +98,7 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     if (it.status === '承認待ち') {
       if (it.expires && it.expires <= NOW) return ['ex', '期限切れ（送りません）'];
       if (p.verb === 'OK') return ['ok', '送信待ちにしました（' + md(p.at) + '）。Macが2〜4分で受け取ります'];
-      if (p.verb === 'NG') return ['ng', '送らないことにしました（' + md(p.at) + '）'];
+      if (p.verb === 'NG') return ['ng', '送らないことにしました（' + md(p.at) + '）' + (p.reason ? '　理由：' + p.reason : '')];
       if (ph.result && ph.result.indexOf('反映していません') === 0) return ['warn', ph.result];
       return ['', ''];
     }
@@ -124,11 +125,20 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     else if (code && it.editable) h.push((!editing && masked(shown).length ? '<div class="rs warn">' + e(masked(shown).join('・')) + ' が残っています。「編集」で直してから送ってください</div>' : '') +
                           '<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK"' + (!editing && masked(shown).length ? ' disabled' : '') + '>' + (editing ? '直した本文で送る' : 'OK（送る）') + '</button>' +
                           '<button class="ed" data-code="' + code + '" data-verb="ED">' + (editing ? '編集をやめる' : '編集') + '</button>' +
-                          '<button class="ng" data-code="' + code + '" data-verb="NG">NG（送らない）</button></div><div class="ms" id="m_' + code + '"></div>');
+                          '<button class="ng" data-code="' + code + '" data-verb="NGO">NG（送らない）</button></div>' + ngbox(it, code) + '<div class="ms" id="m_' + code + '"></div>');
     else if (code) h.push('<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK">OK（送る）</button>' +
-                          '<button class="ng" data-code="' + code + '" data-verb="NG">NG（送らない）</button></div><div class="ms" id="m_' + code + '"></div>');
+                          '<button class="ng" data-code="' + code + '" data-verb="NGO">NG（送らない）</button></div>' + ngbox(it, code) + '<div class="ms" id="m_' + code + '"></div>');
     h.push('<div class="cc">コード ' + e(it.code) + '</div></div>');
     return h.join('');
+  }
+  // NGの理由の欄（任意・300文字まで。2026-11-15 髙橋さん）
+  function ngbox(it, code) {
+    if (!NGOPEN[pk(it)]) return '';
+    var v = Object.prototype.hasOwnProperty.call(NGTXT, pk(it)) ? NGTXT[pk(it)] : '';
+    return '<div class="ngb" style="margin-top:8px"><div class="lb">▼ NGの理由（任意。次から文面を直すのに使います）</div>' +
+      '<textarea id="r_' + code + '" data-ngr="' + pk(it) + '" maxlength="300" style="width:100%;box-sizing:border-box;min-height:84px;font:inherit;font-size:16px" placeholder="例：内見の予定が入ったので送らない／書き出しが違う" aria-label="NGの理由">' + e(v) + '</textarea>' +
+      '<div class="bt"><button class="ng" data-code="' + code + '" data-verb="NG">NGで確定（送らない）</button>' +
+      '<button class="ed" data-code="' + code + '" data-verb="NGC">やめる</button></div></div>';
   }
   function lbl(s) { return s === '送信済み' || s === '反映済み' ? 'dn' : (s === 'NG' || s === '期限切れ' ? 'gr' : 'bad'); }
   function draw() {
@@ -145,7 +155,8 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
       h.push('<div class="old"><div class="ot">処理済み</div>');
       cl.forEach(function (it) {
         h.push('<div class="or"><span class="os ' + lbl(it.status) + '">' + e(it.status) + '</span>' + e(md(it.updated)) + '　' + e(it.team) + '<br>' + e(it.summary) +
-               (it.phone && it.phone.result ? '<br><span class="op">スマホ：' + e(it.phone.verb) + ' ' + e(it.phone.result) + '</span>' : '') + '</div>');
+               (it.phone && it.phone.result ? '<br><span class="op">スマホ：' + e(it.phone.verb) + ' ' + e(it.phone.result) + '</span>' : '') +
+               (it.status === 'NG' && /^スマホでNG：/.test(it.result || '') ? '<br><span class="op">理由：' + e(it.result.replace(/^スマホでNG：/, '')) + '</span>' : '') + '</div>');
       });
       h.push('</div>');
     }
@@ -169,6 +180,12 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
       var ta = document.getElementById('b_' + code); if (ta) ta.focus();
       return;
     }
+    if (it && (verb === 'NGO' || verb === 'NGC')) {   // NG：理由の欄を開く／閉じる
+      if (verb === 'NGC') { delete NGOPEN[pk(it)]; delete NGTXT[pk(it)]; } else NGOPEN[pk(it)] = 1;
+      draw();
+      var rt = document.getElementById('r_' + code); if (rt) rt.focus();
+      return;
+    }
     if (!it || (verb !== 'OK' && verb !== 'NG')) return;
     if (verb === 'OK' && it.editable) {
       var ta0 = document.getElementById('b_' + code), rv = it.approval || {};
@@ -184,8 +201,10 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     var q = { op: 'decide', code: code, d: verb, h: it.hash };
     var ta2 = document.getElementById('b_' + code);
     if (verb === 'OK' && it.editable && ta2) q.body = ta2.value;   // 編集を開いているときだけ、直した本文を送る
+    var rta = document.getElementById('r_' + code);
+    if (verb === 'NG' && rta && rta.value.trim()) q.reason = rta.value.trim().slice(0, 300);
     api(q).then(function (r) {
-      if (r && r.ok) { delete BUSY[code]; PRESSED[pk(it)] = { verb: r.verb, at: r.at, body: r.body, edited: r.edited }; draw(); setTimeout(load, 1500); }
+      if (r && r.ok) { delete BUSY[code]; PRESSED[pk(it)] = { verb: r.verb, at: r.at, body: r.body, edited: r.edited, reason: r.reason }; delete NGOPEN[pk(it)]; delete NGTXT[pk(it)]; draw(); setTimeout(load, 1500); }
       else { back((r && r.error) || '失敗しました'); setTimeout(load, 1500); }
     }).catch(function (x) { back('送れませんでした：' + x.message + '（もう一度押してください）'); });
   });
