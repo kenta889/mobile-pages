@@ -33,7 +33,7 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
 </head>
 <body>
 <div class="wrap">
-<header>承認<small>OK を押すと送信待ちになり、Macが数分で受け取って送ります（送ってよい時間の外なら時間が来てから）。NG は送りません</small></header>
+<header>承認<small>OK を押すと送信待ちになり、Macが数分で受け取って送ります（送ってよい時間の外なら時間が来てから）。「編集」で直したものは送らず、Claudeが直して新しいコードで出し直すので、もう一度 OK を押してください。NG は送りません</small></header>
 <div id="list"><div class="em">読み込んでいます…</div></div>
 </div>
 <script>
@@ -97,6 +97,7 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     var p = PRESSED[pk(it)] || {}, ph = it.phone || {};
     if (it.status === '承認待ち') {
       if (it.expires && it.expires <= NOW) return ['ex', '期限切れ（送りません）'];
+      if (p.verb === 'OK' && (p.edited || (typeof p.body === 'string' && p.body.trim() !== String(it.body || '').trim()))) return ['ok', '編集を受け付けました（' + md(p.at) + '・まだ送っていません）。Claudeが直して、新しいコードで出し直します。出し直したらもう一度 OK を押してください'];
       if (p.verb === 'OK') return ['ok', '送信待ちにしました（' + md(p.at) + '）。Macが2〜4分で受け取ります'];
       if (p.verb === 'NG') return ['ng', '送らないことにしました（' + md(p.at) + '）' + (p.reason ? '　理由：' + p.reason : '')];
       if (ph.result && ph.result.indexOf('反映していません') === 0) return ['warn', ph.result];
@@ -104,6 +105,7 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     }
     if (it.status === '承認済み') return ['ok', 'OK済み・送信待ち' + (it.result ? '（' + it.result + '）' : '')];
     if (it.status === '送信中') return ['ok', '送信中'];
+    if (it.result && it.result.indexOf('出し直し') >= 0) return ['', it.result];
     return ['', it.status];
   }
   function card(it) {
@@ -123,7 +125,7 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     } else h.push('<div class="bd">' + e(shown || '（本文なし）') + '</div>');
     if (s[1]) h.push('<div class="rs ' + s[0] + '">' + e(s[1]) + '</div>');
     else if (code && it.editable) h.push((!editing && masked(shown).length ? '<div class="rs warn">' + e(masked(shown).join('・')) + ' が残っています。「編集」で直してから送ってください</div>' : '') +
-                          '<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK"' + (!editing && masked(shown).length ? ' disabled' : '') + '>' + (editing ? '直した本文で送る' : 'OK（送る）') + '</button>' +
+                          '<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK"' + (!editing && masked(shown).length ? ' disabled' : '') + '>' + (editing ? '直して出し直す（まだ送りません）' : 'OK（送る）') + '</button>' +
                           '<button class="ed" data-code="' + code + '" data-verb="ED">' + (editing ? '編集をやめる' : '編集') + '</button>' +
                           '<button class="ng" data-code="' + code + '" data-verb="NGO">NG（送らない）</button></div>' + ngbox(it, code) + '<div class="ms" id="m_' + code + '"></div>');
     else if (code) h.push('<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK">OK（送る）</button>' +
