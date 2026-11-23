@@ -66,8 +66,10 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
   <h2>本当に送信しますか？</h2>
   <div class="ds" id="dto"></div>
   <div id="dtalk" style="margin-top:8px"></div>
-  <div class="fl" style="margin-top:12px">本文（このとおりに送ります。直せます）</div>
-  <textarea id="dbody" rows="14"></textarea>
+  <div class="fl" style="margin-top:12px">1通目（このとおりに送ります。直せます）</div>
+  <textarea id="dbody" rows="13"></textarea>
+  <div class="fl" style="margin-top:12px">2通目・内見の日時（このとおりに送ります。直せます。空にすれば送りません）</div>
+  <textarea id="dbody2" rows="7"></textarea>
   <div class="wl" id="dwarn"></div>
   <div class="bt"><button id="cancel" type="button">キャンセル</button><button id="send" type="button">送信する</button></div>
   <div id="res"></div>
@@ -130,7 +132,7 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
         (can ? '<div class="mm"><label>この物件へのメモ（お客様のページと本文に入ります）</label><textarea rows="2" maxlength="200" data-m="' + esc(x.pid) + '" placeholder="例：駅まで5分の角部屋です">' + esc(MEMO[c.c + '/' + x.pid] || '') + '</textarea></div>' : '') +
         '</div>');
     });
-    out.push('<div class="box"><div class="fl">最後のひとこと（あなたの見解。本文の最後とページの上に入ります）</div><textarea id="lead" rows="2" maxlength="300" placeholder="例：1が一番おすすめです！">' + esc(LEAD[c.c] || '') + '</textarea></div>');
+    out.push('<div class="box"><div class="fl">ページの上に出すひとこと（任意。メッセージには入りません）</div><textarea id="lead" rows="2" maxlength="300" placeholder="例：1が一番おすすめです！">' + esc(LEAD[c.c] || '') + '</textarea></div>');
     var hs = (D.pages || []).filter(function (p) { return p.c === c.c; });
     if (hs.length) out.push('<div class="box hist"><div class="fl">最近の送付</div>' + hs.map(function (p) {
       return esc(p.at.slice(5, 16)) + '　' + p.n + '件　' + esc(p.result || p.st);
@@ -189,24 +191,30 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
     var r = (x.spec[0] || '').replace(/^賃料\s*/, '').replace(/（.*$/, ''), m = (x.spec[1] || '').split('・')[0];
     return [r, m].filter(Boolean).join('・');
   }
+  // 1通目：物件とページのリンク。絵文字は使わない（2026-11-23 髙橋さんの形）
   function bodyText(c, items, url) {
-    var L = ['🏠 新着のお部屋をお送りします！'];
+    var L = ['お世話になっております！', '新着物件をお送りいたします！'];
     items.forEach(function (x, i) {
       var s = short(x), m = (MEMO[c.c + '/' + x.pid] || '').trim();
-      L.push((i + 1) + '. ' + x.name + (s ? '（' + s + '）' : ''));
+      L.push('', (i + 1) + '. ' + x.name + (s ? '（' + s + '）' : ''));
       if (m) L.push('→ ' + m);
     });
-    L.push('', '図面はこちらからご覧いただけます👇', url);
-    if (D.naiken) L.push('', D.naiken, '難しい場合はご都合のよい日時をお知らせください。');
-    var lead = (LEAD[c.c] || '').trim(); if (lead) L.push('', lead);
+    L.push('', '↓図面はこちらからご覧いただけます↓', url);
     return L.join('\n');
   }
+  // 2通目：内見の日時（毎回直してから送る。空にすれば1通目だけ）
+  function body2Text() {
+    var sl = (D.slots || []);
+    if (!sl.length) return '';
+    return ['ご内覧は以下日時にてご案内可能です！'].concat(sl.map(function (x) { return '・' + x; }))
+      .concat(['', 'もしご興味ございましたらお知らせいただけますと幸いです！']).join('\n');
+  }
+  var dbody2 = document.getElementById('dbody2');
   var dlg = document.getElementById('dlg'), dbody = document.getElementById('dbody'), dwarn = document.getElementById('dwarn'), send = document.getElementById('send'), res = document.getElementById('res');
   function warns() {
     var c = cust(), w = [], items = selected();
     if (items.length > 5) w.push('物件が' + items.length + '件あります。多いと読まれにくくなります（3件までがおすすめ）');
     var all = dbody.value;
-    if (/いかがでしょうか|ご興味(が)?ございましたら|ご希望日時がございましたら/.test(all)) w.push('「いかがでしょうか」「ご興味ございましたら」で締めない決まりです');
     items.forEach(function (x) { if ((MEMO[c.c + '/' + x.pid] || '').length > 80) w.push(x.name + ' のメモが長めです（50字くらいまでが返信が多い）'); });
     if (all.indexOf(TOKEN) < 0) w.push('本文にページのリンクがありません（送れません）');
     if (c.via === 'LINE' && /^\S+様\s*$/m.test(all.split('\n')[0])) w.push('LINEの2通目以降は宛名を付けない決まりです');
@@ -225,6 +233,7 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
         (c.talk ? '' : '<div class="wl">顧客ノートにトーク名がありません。入力した名前で送れたら、ノートに書き足します。</div>');
     } else dt.innerHTML = '';
     dbody.value = bodyText(c, items, url);
+    dbody2.value = body2Text();
     res.textContent = ''; send.disabled = false; send.textContent = '送信する';
     warns(); dlg.style.display = 'block'; window.scrollTo(0, 0);
   });
@@ -235,7 +244,7 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
     var talk = talkEl ? talkEl.value.trim() : '';
     if (c.via === 'LINE' && !talk) { res.textContent = 'LINEのトーク名を入れてください'; return; }
     if (dbody.value.indexOf(TOKEN) < 0) { res.textContent = '本文にページのリンクが必要です'; return; }
-    var q = { t: TOKEN, c: c.c, via: c.via, talk: talk, text: dbody.value, lead: (LEAD[c.c] || '').trim(),
+    var q = { t: TOKEN, c: c.c, via: c.via, talk: talk, text: dbody.value, text2: dbody2.value, lead: (LEAD[c.c] || '').trim(),
       items: items.map(function (x) { return { pid: x.pid, memo: (MEMO[c.c + '/' + x.pid] || '').trim() }; }) };
     send.disabled = true; send.textContent = '送っています…';
     // 本文が長いと GET の上限（約8KB）を超えるので POST（text/plain＝事前確認なし）。同じ32文字の依頼は二重にならない
