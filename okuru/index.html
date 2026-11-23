@@ -114,8 +114,9 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
     }).join('');
     var c = cust();
     if (!c) { main.innerHTML = '<div class="em">送れる物件はまだありません。新着一覧で「図面を取得」すると、ここに並びます。</div>'; upd(); return; }
-    var to = c.via === 'LINE' ? ('LINE：' + (c.talk ? esc(c.talk) : '<span class="warn">トーク名が顧客ノートにありません（送るときに入力）</span>'))
-      : ('SMS：' + esc(c.tel || '') + (c.tel ? '' : '<span class="warn">携帯番号が顧客ノートにありません</span>'));
+    var to = c.via === 'SMS' ? ('SMS：' + esc(c.tel || '') + (c.tel ? '' : '<span class="warn">携帯番号が顧客ノートにありません</span>'))
+      : (esc(c.via) + '：' + (c.talk ? esc(c.talk) : '<span class="warn">トーク名が顧客ノートにありません（送るときに入力）</span>') +
+         (c.via === 'WhatsApp' ? '（' + (c.tel ? esc(c.tel) : '<span class="warn">番号が顧客ノートにありません</span>') + '）' : ''));
     var out = ['<div class="ch"><div class="nm">' + esc(c.label) + '</div>' + to + (c.last_sent ? '　／　前回の送付 ' + esc(c.last_sent) : '') + '</div>'];
     c.items.forEach(function (x) {
       var can = x.st === 'ok', on = !!SEL[c.c + '/' + x.pid];
@@ -224,12 +225,13 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
     var c = cust(), items = selected(); if (!items.length) return;
     TOKEN = token();
     var url = (D.pub_b || 'https://kenta889.github.io/mobile-pages/b/') + '#' + TOKEN;
-    document.getElementById('dto').innerHTML = esc(c.label) + 'に、' + (c.via === 'LINE' ? 'LINE' : 'SMS') + 'で物件' + items.length + '件を送ります。<br>' +
+    document.getElementById('dto').innerHTML = esc(c.label) + 'に、' + esc(c.via) + 'で物件' + items.length + '件を送ります。<br>' +
       items.map(function (x, i) { return (i + 1) + '. ' + esc(x.name); }).join('<br>') +
       (c.via === 'SMS' ? '<br><span style="color:#5a6270;font-size:13px">SMSは最初に「' + esc(c.sei) + '様」、最後に「髙橋」を付けて送ります（' + esc(c.tel) + '）</span>' : '');
     var dt = document.getElementById('dtalk');
-    if (c.via === 'LINE') {
-      dt.innerHTML = '<div class="fl">LINEのトーク名（完全一致で開きます）</div><input type="text" id="talk" value="' + esc(c.talk || '') + '"' + (c.talk ? ' readonly' : ' placeholder="トーク一覧に出る名前をそのまま"') + '>' +
+    if (c.via !== 'SMS') {
+      var tl = c.via === 'LINE' ? 'LINEのトーク名（完全一致で開きます）' : c.via === 'WhatsApp' ? 'WhatsAppのトークの上に出る名前（番号で開き、この名前と合うか確かめてから送ります）' : 'WeChatのトークの上に出る名前（検索して、完全一致したときだけ送ります）';
+      dt.innerHTML = '<div class="fl">' + tl + '</div><input type="text" id="talk" value="' + esc(c.talk || '') + '"' + (c.talk ? ' readonly' : ' placeholder="トーク一覧に出る名前をそのまま"') + '>' +
         (c.talk ? '' : '<div class="wl">顧客ノートにトーク名がありません。入力した名前で送れたら、ノートに書き足します。</div>');
     } else dt.innerHTML = '';
     dbody.value = bodyText(c, items, url);
@@ -242,7 +244,7 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
   send.addEventListener('click', function () {
     var c = cust(), items = selected(), talkEl = document.getElementById('talk');
     var talk = talkEl ? talkEl.value.trim() : '';
-    if (c.via === 'LINE' && !talk) { res.textContent = 'LINEのトーク名を入れてください'; return; }
+    if (c.via !== 'SMS' && !talk) { res.textContent = c.via + 'のトーク名を入れてください'; return; }
     if (dbody.value.indexOf(TOKEN) < 0) { res.textContent = '本文にページのリンクが必要です'; return; }
     var q = { t: TOKEN, c: c.c, via: c.via, talk: talk, text: dbody.value, text2: dbody2.value, lead: (LEAD[c.c] || '').trim(),
       items: items.map(function (x) { return { pid: x.pid, memo: (MEMO[c.c + '/' + x.pid] || '').trim() }; }) };
