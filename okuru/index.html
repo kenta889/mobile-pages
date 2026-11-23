@@ -215,7 +215,7 @@ textarea,input[type=text]{width:100%;font-size:16px;font-family:inherit;border:1
   go.addEventListener('click', function () {
     var c = cust(), items = selected(); if (!items.length) return;
     TOKEN = token();
-    var url = (D.pub_b || 'https://kenta889.github.io/mobile-pages/b/') + '#t=' + TOKEN + '&u=' + U;
+    var url = (D.pub_b || 'https://kenta889.github.io/mobile-pages/b/') + '#' + TOKEN;
     document.getElementById('dto').innerHTML = esc(c.label) + 'に、' + (c.via === 'LINE' ? 'LINE' : 'SMS') + 'で物件' + items.length + '件を送ります。<br>' +
       items.map(function (x, i) { return (i + 1) + '. ' + esc(x.name); }).join('<br>') +
       (c.via === 'SMS' ? '<br><span style="color:#5a6270;font-size:13px">SMSは最初に「' + esc(c.sei) + '様」、最後に「髙橋」を付けて送ります（' + esc(c.tel) + '）</span>' : '');

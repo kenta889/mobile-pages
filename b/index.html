@@ -44,18 +44,20 @@ h1{font-size:20px;margin:4px 0 2px}
 <div id="lb"><button type="button" id="lbx">閉じる</button><img alt="図面（拡大）"></div>
 <script>
 (function () {
-  // リンクは「#t=<32文字>&u=<データの口>」。お名前・条件はページにもデータにも入っていない
-  var h = {};
-  String(location.hash || '').replace(/^#/, '').split('&').forEach(function (kv) {
+  // リンクは「#<32文字>」だけ（2026-11-23 短くした）。データの口はお客様用の読むだけのGAS（合言葉の要る口は持たない）。
+  // 古い形「#t=<32文字>&u=…」も読める。お名前・条件はページにもデータにも入っていない
+  var PUB = 'https://script.google.com/macros/s/AKfycbygeAgnoNPxnfMBtGhqc-xmkrEdTvKPTUoGi8rL6D7cUpgzzoSrGc4hP3BJQM3nyf8/exec';
+  var raw = String(location.hash || '').replace(/^#/, ''), h = {};
+  raw.split('&').forEach(function (kv) {
     var i = kv.indexOf('='); if (i > 0) h[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1));
   });
-  var T = h.t || '', U = h.u || '';
+  var T = /^[A-Za-z0-9]{32}$/.test(raw) ? raw : (h.t || ''), U = PUB, OLD = !!h.u;
   var main = document.getElementById('main');
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fail(m) { main.innerHTML = '<div class="msg">' + esc(m) + '</div>'; }
   if (!/^[A-Za-z0-9]{32}$/.test(T) || !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{20,}\/exec$/.test(U)) { fail('リンクが正しくありません。お送りしたメッセージのリンクから開いてください。'); return; }
   function api(q) {
-    return fetch(U + '?p=b_api&t=' + T + (q || ''), { credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', redirect: 'follow' })
+    return fetch(U + '?t=' + T + (q || ''), { credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer', redirect: 'follow' })
       .then(function (r) { return r.json(); });
   }
   var lb = document.getElementById('lb'), li = lb.querySelector('img');
