@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex,nofollow">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'">
 <title>承認</title>
 <style>
 body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;margin:0;background:#f4f5f7;color:#2c3038;padding-bottom:40px;-webkit-text-size-adjust:100%}
@@ -114,15 +114,29 @@ header{background:#1a4a7a;color:#fff;padding:14px 16px;font-weight:bold}header s
     h.push('<div class="tp"><span class="tm">' + e(it.team) + '</span><span class="ex">期限 ' + e(md(it.expires)) + '</span></div>');
     h.push('<div class="sm">' + e(it.summary) + '</div>');
     h.push('<div class="ds">宛先：' + e(it.dest) + '</div>');
-    if (it.head) h.push('<div class="hd">' + e(it.head) + '</div>');
+    var hasImg = (it.imgs || []).length > 0;
+    // 書類の画像がある件は、説明（見出し）を畳んで画像を先に見せる（2026-11-28 髙橋さん「文章で送ろうとしてると勘違いしてしまいます」）
+    if (it.head && hasImg) h.push('<details style="margin-top:8px"><summary class="lb" style="cursor:pointer">確認の内容（物件・送り先・募集中の確認。元付には送りません）</summary><div class="hd">' + e(it.head) + '</div></details>');
+    else if (it.head) h.push('<div class="hd">' + e(it.head) + '</div>');
     var review = it.approval || {}, pressed = PRESSED[pk(it)] || {};
     var shown = pressed.verb === 'OK' && typeof pressed.body === 'string' ? pressed.body : (review.approved_body || it.body || '');
-    h.push('<div class="lb">▼ 送る本文（全文）' + (review.edited || pressed.edited ? '・編集あり' : '') + '</div>');
     var editing = it.editable && !s[1] && OPEN[pk(it)];
+    // 書類の画像（2026-11-28 髙橋さん「依頼書を画像表示して、それを私が承認する形に」）。FAX は画像だけを見て OK できるように、文面は畳む
+    var imgs = (it.imgs || []).filter(function (u) { return /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(u); });
+    var faxOnly = imgs.length && !/メール/.test(it.dest || '');
+    if (imgs.length) {
+      h.push('<div class="lb">' + e(it.img_label || '▼ 送る書類') + '</div>');
+      imgs.forEach(function (u) { h.push('<img src="' + u + '" alt="送る書類" style="width:100%;display:block;margin-top:6px;border:1px solid #c9ced6;border-radius:4px;background:#fff">'); });
+    }
+    if (faxOnly && !editing) {
+      h.push('<details style="margin-top:10px"><summary class="lb" style="cursor:pointer">書類の文字（直すときだけ。「編集」で書き換えると書類を作り直します）</summary>');
+      h.push('<div class="bd">' + e((pressed.verb === 'OK' && typeof pressed.body === 'string' ? pressed.body : (review.approved_body || it.body || '')) || '（本文なし）') + '</div></details>');
+    } else
+    h.push('<div class="lb">' + (faxOnly ? '▼ 書類の文字（編集中）' : imgs.length ? '▼ 送るメールの本文（全文）' : '▼ 送る本文（全文）') + (review.edited || pressed.edited ? '・編集あり' : '') + '</div>');
     if (editing) {
       var value = Object.prototype.hasOwnProperty.call(EDITS, pk(it)) ? EDITS[pk(it)] : shown;
       h.push('<textarea class="bd" style="width:100%;box-sizing:border-box;min-height:280px;font:inherit;font-size:16px" maxlength="2000" id="b_' + it.code + '" data-edit="' + pk(it) + '" aria-label="送る本文">' + e(value) + '</textarea>');
-    } else h.push('<div class="bd">' + e(shown || '（本文なし）') + '</div>');
+    } else if (!faxOnly) h.push('<div class="bd">' + e(shown || '（本文なし）') + '</div>');
     if (s[1]) h.push('<div class="rs ' + s[0] + '">' + e(s[1]) + '</div>');
     else if (code && it.editable) h.push((!editing && masked(shown).length ? '<div class="rs warn">' + e(masked(shown).join('・')) + ' が残っています。「編集」で直してから送ってください</div>' : '') +
                           '<div class="bt"><button class="ok" data-code="' + code + '" data-verb="OK"' + (!editing && masked(shown).length ? ' disabled' : '') + '>' + (editing ? '直して出し直す（まだ送りません）' : 'OK（送る）') + '</button>' +
